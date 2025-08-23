@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Pronunciation Feedback (MVP M1)</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+		<link rel="stylesheet" href="styles.css" />
+	</head>
+	<body>
+		<header class="app-header">
+			<h1>Pronunciation Feedback</h1>
+			<div class="badge">M2: Mic + Greedy Align</div>
+		</header>
+
+		<main class="layout">
+			<section class="pane pane-input">
+				<h2>1) Load Text</h2>
+				<div class="load-controls">
+					<input type="file" id="fileInput" accept=".txt" />
+					<button id="demoBtn" title="Load demo text">Demo Text</button>
+				</div>
+				<textarea
+					id="inputText"
+					rows="8"
+					placeholder="Paste or type text here..."
+				></textarea>
+				<div class="actions">
+					<button id="loadBtn">Load into Reader</button>
+					<span id="charCount" class="muted">0 characters</span>
+				</div>
+
+				<h2>2) Read & Mark</h2>
+				<div class="controls controls-gap-4">
+					<button id="startBtn" title="Start session (resets statuses)">
+						Start
+					</button>
+					<button id="resetBtn" title="Reset statuses">Reset</button>
+					<button id="micStartBtn" title="Start microphone">Mic On</button>
+					<button id="micStopBtn" title="Stop microphone">Mic Off</button>
+					<div
+						id="micIndicator"
+						class="mic-indicator"
+						title="Microphone status"
+					>
+						OFF
+					</div>
+				</div>
+
+				<div class="controls controls-column">
+					<div class="slider-row">
+						<label class="muted" for="lookahead">Look ahead</label>
+						<input
+							id="lookahead"
+							type="range"
+							min="0"
+							max="5"
+							step="1"
+							value="2"
+						/>
+						<span id="lookaheadVal" class="muted slider-align-end">2</span>
+					</div>
+					<div class="slider-row">
+						<label class="muted" for="threshold">Match sensitivity</label>
+						<input
+							id="threshold"
+							type="range"
+							min="0.6"
+							max="1"
+							step="0.05"
+							value="0.8"
+						/>
+						<span id="thresholdVal" class="muted slider-align-end">0.80</span>
+					</div>
+					<div class="button-row">
+						<button id="backBtn" title="Back one word (←)">Back</button>
+						<button id="skipBtn" title="Mark skipped (S)">Skip</button>
+						<button id="incorrectBtn" title="Mark incorrect (X)">
+							Incorrect
+						</button>
+						<button
+							id="correctBtn"
+							class="primary"
+							title="Mark correct (C or →)"
+						>
+							Correct
+						</button>
+					</div>
+				</div>
+
+				<div class="shortcuts muted shortcuts-margin">
+					Shortcuts: C=Correct, X=Incorrect, S=Skip, ←=Back, →=Correct, 0=Reset
+				</div>
+
+				<div id="metrics" class="metrics metrics-margin">
+					<div><strong>Accuracy:</strong> <span id="mAccuracy">–</span></div>
+					<div><strong>WPM:</strong> <span id="mWpm">–</span></div>
+					<div>
+						<strong>Progress:</strong> <span id="mProgress">0 / 0</span>
+					</div>
+					<div><strong>Elapsed:</strong> <span id="mElapsed">0s</span></div>
+					<div><strong>ASR:</strong> <span id="mAsr">idle</span></div>
+					<div><strong>Last heard:</strong> <span id="mHeard">–</span></div>
+				</div>
+
+				<div id="driftBanner" class="banner hidden drift-margin">
+					<div>
+						<strong>Drift detected:</strong>
+						consecutive errors are high. You can realign.
+					</div>
+					<div class="banner-actions">
+						<button id="realignNextSentenceBtn">Next sentence</button>
+						<button id="realignDismissBtn">Dismiss</button>
+					</div>
+				</div>
+
+				<div class="sentences sentences-margin">
+					<div class="sentences-header">
+						<h3>Sentences</h3>
+						<span class="muted">Tap to jump</span>
+					</div>
+					<div id="sentencesList" class="sentences-list"></div>
+				</div>
+			</section>
+
+			<section class="pane pane-reader">
+				<h1>Reader View</h1>
+				<div id="readingPane" class="reading-pane">
+					<div id="tokensContainer" class="tokens"></div>
+				</div>
+			</section>
+		</main>
+		<script type="module" src="app.js"></script>
+	</body>
+</html>
