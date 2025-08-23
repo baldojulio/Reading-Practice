@@ -23,6 +23,7 @@ import {
 import { computeMetrics } from "./metrics.js";
 import { SpeechEngine } from "./speech.js";
 import { Aligner } from "./aligner.js";
+import { DecisionBuffer } from "./decisionBuffer.js"
 
 const els = {
 	fileInput: document.getElementById("fileInput"),
@@ -49,42 +50,6 @@ const els = {
 	backtrackThreshold: document.getElementById("backtrackThreshold"),
 	backtrackWindow: document.getElementById("backtrackWindow"),
 };
-
-// Ring buffer for tracking recent alignment decisions
-class DecisionBuffer {
-	constructor(size = 20) {
-		this.size = size;
-		this.buffer = [];
-		this.head = 0;
-		this.count = 0;
-	}
-	
-	push(decision) {
-		if (this.count < this.size) {
-			this.buffer.push(decision);
-			this.count++;
-		} else {
-			this.buffer[this.head] = decision;
-			this.head = (this.head + 1) % this.size;
-		}
-	}
-	
-	getRecent(count) {
-		if (count >= this.count) return [...this.buffer];
-		const result = [];
-		for (let i = 0; i < count; i++) {
-			const idx = (this.head - count + i + this.size) % this.size;
-			if (this.buffer[idx]) result.push(this.buffer[idx]);
-		}
-		return result;
-	}
-	
-	clear() {
-		this.buffer = [];
-		this.head = 0;
-		this.count = 0;
-	}
-}
 
 let state = {
 	tokens: [],
