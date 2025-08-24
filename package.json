@@ -1,0 +1,25 @@
+{
+  "name": "interactive-reading-assistant",
+  "version": "1.0.0",
+  "description": "A web-based reading assistant that helps users improve their reading experience through interactive features and accessibility support.",
+  "main": "aligner.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baldojulio/Interactive-Reading-Assistant.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/baldojulio/Interactive-Reading-Assistant/issues"
+  },
+  "homepage": "https://github.com/baldojulio/Interactive-Reading-Assistant#readme",
+  "dependencies": {
+    "double-metaphone": "^2.0.1",
+    "fast-levenshtein": "^3.0.0"
+  }
+}

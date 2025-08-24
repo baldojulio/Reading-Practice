@@ -1,5 +1,7 @@
 // Beam search aligner with online DP for M2
 import { normalizeWord } from "./tokenize.js";
+import { get as levenshtein } from "./libs/levenshtein-esm.js";
+import { doubleMetaphone } from "double-metaphone";
 
 const FILLERS = new Set(["uh", "um", "er", "ah", "eh", "mm", "hmm"]);
 
@@ -25,6 +27,8 @@ export class Aligner {
 		this.threshold = 0.8; // similarity threshold
 		this.margin = 0.1; // cost margin for advancing
 		this.windowSize = 10; // rolling window size for text tokens
+		this.phoneticEnabled = true; // enable phonetic matching by default
+		this.phoneticWeight = 0.6; // weight of phonetic vs text similarity
 		this.spokenBuffer = []; // buffer of spoken words
 		this.beam = []; // current beam states
 		// ui hooks: { updateStatus(tokenIndex, status), setPointer(idx), setTitle(tokenIndex, title) }
@@ -34,7 +38,7 @@ export class Aligner {
 		this._resetBeam();
 	}
 
-	setConfig({ beamWidth, threshold, margin, windowSize }) {
+	setConfig({ beamWidth, threshold, margin, windowSize, phoneticEnabled, phoneticWeight }) {
 		if (Number.isFinite(beamWidth))
 			this.beamWidth = Math.max(2, Math.min(10, Math.floor(beamWidth)));
 		if (Number.isFinite(threshold))
@@ -43,6 +47,8 @@ export class Aligner {
 			this.margin = Math.min(1, Math.max(0, margin));
 		if (Number.isFinite(windowSize))
 			this.windowSize = Math.max(5, Math.min(20, Math.floor(windowSize)));
+		if (typeof phoneticEnabled === 'boolean') this.phoneticEnabled = phoneticEnabled;
+		if (Number.isFinite(phoneticWeight)) this.phoneticWeight = Math.max(0, Math.min(1, phoneticWeight));
 	}
 
 	setPointer(idx) {
@@ -87,6 +93,14 @@ export class Aligner {
 	// Expand beam with a new spoken word
 	_expandBeam(spokenWord) {
 		const newBeam = [];
+		// Precompute phonetic codes for spoken word once for this expansion
+		let spokenPhonetic = ["", ""];
+		if (this.phoneticEnabled) {
+			try {
+				const codes = doubleMetaphone(spokenWord);
+				if (Array.isArray(codes)) spokenPhonetic = [codes[0] || "", codes[1] || ""];
+			} catch (_) {}
+		}
 		
 		for (const state of this.beam) {
 			// Get available text tokens in window
@@ -97,7 +111,7 @@ export class Aligner {
 				const textToken = textTokens[i].token;
 				
 				// Generate possible transitions
-				const transitions = this._generateTransitions(state, textPos, textToken, spokenWord);
+				const transitions = this._generateTransitions(state, textPos, textToken, spokenWord, spokenPhonetic);
 				newBeam.push(...transitions);
 			}
 		}
@@ -107,12 +121,13 @@ export class Aligner {
 	}
 
 	// Generate possible transitions from current state
-	_generateTransitions(state, textPos, textToken, spokenWord) {
+	_generateTransitions(state, textPos, textToken, spokenWord, spokenPhonetic) {
 		const transitions = [];
 		
 		// Match transition
-		if (this._canMatch(spokenWord, textToken)) {
-			const matchCost = 1 - similarity(spokenWord, textToken.norm);
+		if (this._canMatch(spokenWord, spokenPhonetic, textToken)) {
+			const sim = this._combinedSimilarity(spokenWord, spokenPhonetic, textToken);
+			const matchCost = 1 - sim;
 			const newState = state.clone();
 			newState.textPos = textPos + 1;
 			newState.spokenPos = state.spokenPos + 1;
@@ -127,7 +142,8 @@ export class Aligner {
 		}
 		
 		// Substitution transition
-		const subCost = 1 - similarity(spokenWord, textToken.norm);
+		const subSim = this._combinedSimilarity(spokenWord, spokenPhonetic, textToken);
+		const subCost = 1 - subSim;
 		const subState = state.clone();
 		subState.textPos = textPos + 1;
 		subState.spokenPos = state.spokenPos + 1;
@@ -168,6 +184,40 @@ export class Aligner {
 		transitions.push(insertState);
 		
 		return transitions;
+	}
+
+	// Combined similarity using text and phonetic codes
+	_combinedSimilarity(spokenWord, spokenPhonetic, textToken) {
+		const textSim = similarity(spokenWord, textToken.norm);
+		if (!this.phoneticEnabled) return textSim;
+		// If token has phonetic codes, compare
+		const tPhon = Array.isArray(textToken.phonetic) ? textToken.phonetic : ["", ""];
+		let phonSim = 0;
+		if (tPhon[0] || tPhon[1] || (spokenPhonetic && (spokenPhonetic[0] || spokenPhonetic[1]))) {
+			// Exact phonetic code match → 1
+			if (
+				(spokenPhonetic[0] && (spokenPhonetic[0] === tPhon[0] || spokenPhonetic[0] === tPhon[1])) ||
+				(spokenPhonetic[1] && (spokenPhonetic[1] === tPhon[0] || spokenPhonetic[1] === tPhon[1]))
+			) {
+				phonSim = 1;
+			} else {
+				// Fallback: normalized edit distance between best pair of codes
+				const pairs = [];
+				for (const a of [spokenPhonetic[0], spokenPhonetic[1]].filter(Boolean)) {
+					for (const b of [tPhon[0], tPhon[1]].filter(Boolean)) pairs.push([a, b]);
+				}
+				let best = 0;
+				for (const [a, b] of pairs) {
+					const maxLen = Math.max(a.length, b.length) || 1;
+					const sim = 1 - (levenshtein(a, b) / maxLen);
+					if (sim > best) best = sim;
+				}
+				phonSim = best;
+			}
+		}
+		// Weighted blend then take max with text similarity for safety
+		const blended = this.phoneticWeight * phonSim + (1 - this.phoneticWeight) * textSim;
+		return Math.max(textSim, blended);
 	}
 
 	// Check if we can advance the pointer based on beam state
@@ -251,8 +301,8 @@ export class Aligner {
 	}
 
 	// Check if words can match
-	_canMatch(spokenWord, textToken) {
-		return similarity(spokenWord, textToken.norm) >= this.threshold;
+	_canMatch(spokenWord, spokenPhonetic, textToken) {
+		return this._combinedSimilarity(spokenWord, spokenPhonetic, textToken) >= this.threshold;
 	}
 
 	// Reset beam for next iteration
@@ -299,29 +349,8 @@ export class Aligner {
 	}
 }
 
-// Levenshtein similarity ratio
+// Levenshtein similarity ratio using fast-levenshtein
 function similarity(a, b) {
-	const dist = levenshtein(a, b);
-	const maxLen = Math.max(a.length, b.length) || 1;
-	return 1 - dist / maxLen;
-}
-
-function levenshtein(a, b) {
-	const m = a.length,
-		n = b.length;
-	if (m === 0) return n;
-	if (n === 0) return m;
-	const dp = new Array(n + 1);
-	for (let j = 0; j <= n; j++) dp[j] = j;
-	for (let i = 1; i <= m; i++) {
-		let prev = dp[0];
-		dp[0] = i;
-		for (let j = 1; j <= n; j++) {
-			const temp = dp[j];
-			if (a[i - 1] === b[j - 1]) dp[j] = prev;
-			else dp[j] = Math.min(prev + 1, dp[j] + 1, dp[j - 1] + 1);
-			prev = temp;
-		}
-	}
-	return dp[n];
+    const maxLen = Math.max(a.length, b.length) || 1;
+    return 1 - (levenshtein(a, b) / maxLen);
 }

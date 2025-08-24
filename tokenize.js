@@ -1,4 +1,5 @@
 // Tokenizer and normalization for M1
+import { doubleMetaphone } from "double-metaphone";
 
 /**
  * Preprocess text to join hyphenated words split across line breaks
@@ -70,7 +71,13 @@ export function tokenize(text) {
     const [full, word, sep] = match;
     if (word !== undefined) {
       const norm = normalizeWord(word);
-      tokens.push({ id: id++, text: word, norm, isWord: true, status: "pending" });
+      // Precompute phonetic codes (primary, secondary)
+      let phonetic = ["", ""];
+      try {
+        const codes = doubleMetaphone(norm);
+        if (Array.isArray(codes)) phonetic = [codes[0] || "", codes[1] || ""];
+      } catch (_) {}
+      tokens.push({ id: id++, text: word, norm, isWord: true, status: "pending", phonetic });
     } else if (sep !== undefined) {
       tokens.push({ id: id++, text: sep, norm: "", isWord: false, status: "sep" });
     }
